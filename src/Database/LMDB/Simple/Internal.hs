@@ -28,12 +28,13 @@ module Database.LMDB.Simple.Internal
   ) where
 
 import Control.Exception
-  ( bracket
+  ( assert
+  , bracket
   )
 
 import Control.Monad
   ( (>=>)
-  , void
+  , foldM
   )
 
 import Control.Monad.IO.Class
@@ -47,13 +48,23 @@ import Data.Binary
   )
 
 import Data.ByteString
-  ( useAsCStringLen
-  , packCStringLen
+  ( packCStringLen
+  )
+import qualified Data.ByteString as BS
+
+import Data.ByteString.Unsafe
+  ( unsafeUseAsCStringLen
   )
 
 import Data.ByteString.Lazy
-  ( toStrict
+  ( toChunks
+  , toStrict
   , fromStrict
+  )
+import qualified Data.ByteString.Lazy as BSL
+
+import Data.Word
+  ( Word8
   )
 
 import Database.LMDB.Raw
@@ -69,17 +80,17 @@ import Database.LMDB.Raw
   , mdb_cursor_close'
   , mdb_cursor_get'
   , mdb_get'
-  , mdb_put'
+  , mdb_reserve'
   , mdb_del'
   , compileWriteFlags
   )
 
 import Foreign
   ( Ptr
-  , alloca
   , castPtr
   , peek
-  , poke
+  , plusPtr
+  , copyBytes
   )
 
 import GHC.Exts (Constraint)
@@ -149,16 +160,27 @@ instance MonadIO (Transaction mode) where
 -- class to serialize keys and values for LMDB to store on disk.
 data Database k v = Db MDB_env MDB_dbi'
 
+peekVal :: Binary v => Ptr MDB_val -> IO v
+peekVal = peek >=> marshalIn
+
 marshalIn :: Binary v => MDB_val -> IO v
 marshalIn (MDB_val len ptr) =
   decode . fromStrict <$> packCStringLen (castPtr ptr, fromIntegral len)
 
 marshalOut :: Binary v => v -> (MDB_val -> IO a) -> IO a
-marshalOut value f = useAsCStringLen (toStrict $ encode value) $ \(ptr, len) ->
+marshalOut value f =
+  unsafeUseAsCStringLen (toStrict $ encode value) $ \(ptr, len) ->
   f $ MDB_val (fromIntegral len) (castPtr ptr)
 
-peekVal :: Binary v => Ptr MDB_val -> IO v
-peekVal = peek >=> marshalIn
+copyLazyBS :: BSL.ByteString -> Ptr Word8 -> Int -> IO ()
+copyLazyBS lbs ptr rem = foldM copyBS (ptr, rem) (toChunks lbs) >>= \(_, rem) ->
+  assert (rem == 0) $ return ()
+
+  where copyBS :: (Ptr Word8, Int) -> BS.ByteString -> IO (Ptr Word8, Int)
+        copyBS (ptr, rem) bs = unsafeUseAsCStringLen bs $ \(bsp, len) ->
+          assert (len <= rem) $
+          copyBytes ptr (castPtr bsp) len >>
+          return (ptr `plusPtr` len, rem - len)
 
 forEach :: MDB_cursor_op -> MDB_cursor_op
         -> MDB_txn -> MDB_dbi' -> Ptr MDB_val -> Ptr MDB_val
@@ -195,8 +217,11 @@ get' (Db _ dbi) key = Txn $ \txn -> marshalOut key $ mdb_get' txn dbi
 put :: (Binary k, Binary v)
     => Database k v -> k -> v -> Transaction 'ReadWrite ()
 put (Db _ dbi) key value = Txn $ \txn ->
-  marshalOut key $ \kval -> marshalOut value $ \vval ->
-  void $ mdb_put' defaultWriteFlags txn dbi kval vval
+  marshalOut key $ \kval -> do
+  let bs = encode value
+      sz = fromIntegral (BSL.length bs)
+  MDB_val len ptr <- mdb_reserve' defaultWriteFlags txn dbi kval sz
+  assert (fromIntegral len == sz) $ copyLazyBS bs ptr sz
 
 delete :: Binary k => Database k v -> k -> Transaction 'ReadWrite Bool
 delete (Db _ dbi) key = Txn $ \txn ->
