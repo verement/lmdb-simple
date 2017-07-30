@@ -2,7 +2,9 @@ name:                lmdb-simple
 version:             0.1.0.0
 
 synopsis:            Simple API for LMDB
--- description:         
+
+description:         This package provides a simple API for using the
+                     Lightning Memory-mapped Database (LMDB).
 
 homepage:            https://github.com/verement/lmdb-simple#readme
 bug-reports:         https://github.com/verement/lmdb-simple/issues
