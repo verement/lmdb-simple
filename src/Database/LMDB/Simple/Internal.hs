@@ -19,7 +19,6 @@ module Database.LMDB.Simple.Internal
   , forEachForward
   , forEachReverse
   , withCursor
-  , withVal
   , defaultWriteFlags
   , overwriteFlags
   , get
@@ -181,9 +180,6 @@ forEachReverse = forEach MDB_LAST  MDB_PREV
 
 withCursor :: MDB_txn -> MDB_dbi' -> (MDB_cursor' -> IO a) -> IO a
 withCursor txn dbi = bracket (mdb_cursor_open' txn dbi) mdb_cursor_close'
-
-withVal :: MDB_val -> (Ptr MDB_val -> IO a) -> IO a
-withVal val f = alloca $ \ptr -> poke ptr val >> f ptr
 
 defaultWriteFlags, overwriteFlags :: MDB_WriteFlags
 defaultWriteFlags = compileWriteFlags []

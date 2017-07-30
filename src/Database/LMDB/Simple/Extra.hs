@@ -84,7 +84,6 @@ import Database.LMDB.Simple.Internal
   , marshalOut
   , peekVal
   , withCursor
-  , withVal
   , defaultWriteFlags
   , overwriteFlags
   )
@@ -93,6 +92,7 @@ import qualified Database.LMDB.Simple.Internal as Internal
 import Foreign
   ( alloca
   , nullPtr
+  , with
   )
 
 -- | Lookup the value at a key in the database.
@@ -159,7 +159,7 @@ insertLookupWithKey :: (Binary k, Binary v) => (k -> v -> v -> v) -> k -> v
                     -> Database k v -> Transaction 'ReadWrite (Maybe v)
 insertLookupWithKey f key value (Db _ dbi) = Txn $ \txn ->
   withCursor txn dbi $ \cursor -> marshalOut key $ \kval ->
-  withVal kval $ \kptr -> alloca $ \vptr -> do
+  with kval $ \kptr -> alloca $ \vptr -> do
     found <- mdb_cursor_get' MDB_SET cursor kptr vptr
     if found
       then do oldValue <- peekVal vptr
@@ -280,7 +280,7 @@ alterWithKey :: (Binary k, Binary v) => (k -> Maybe v -> Maybe v) -> k
              -> Database k v -> Transaction 'ReadWrite (Maybe v)
 alterWithKey f key (Db _ dbi) = Txn $ \txn ->
   withCursor txn dbi $ \cursor -> marshalOut key $ \kval ->
-  withVal kval $ \kptr -> alloca $ \vptr -> do
+  with kval $ \kptr -> alloca $ \vptr -> do
     found <- mdb_cursor_get' MDB_SET cursor kptr vptr
     if found
       then peekVal vptr >>= \oldValue -> do
