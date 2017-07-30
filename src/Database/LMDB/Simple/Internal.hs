@@ -173,13 +173,12 @@ marshalOut value f =
   f $ MDB_val (fromIntegral len) (castPtr ptr)
 
 copyLazyBS :: BSL.ByteString -> Ptr Word8 -> Int -> IO ()
-copyLazyBS lbs ptr rem = foldM copyBS (ptr, rem) (toChunks lbs) >>= \(_, rem) ->
-  assert (rem == 0) $ return ()
+copyLazyBS lbs ptr rem =
+  foldM copyBS (ptr, rem) (toChunks lbs) >>= \(_, 0) -> return ()
 
   where copyBS :: (Ptr Word8, Int) -> BS.ByteString -> IO (Ptr Word8, Int)
         copyBS (ptr, rem) bs = unsafeUseAsCStringLen bs $ \(bsp, len) ->
-          assert (len <= rem) $
-          copyBytes ptr (castPtr bsp) len >>
+          assert (len <= rem) $ copyBytes ptr (castPtr bsp) len >>
           return (ptr `plusPtr` len, rem - len)
 
 forEach :: MDB_cursor_op -> MDB_cursor_op
@@ -221,7 +220,8 @@ put (Db _ dbi) key value = Txn $ \txn ->
   let bs = encode value
       sz = fromIntegral (BSL.length bs)
   MDB_val len ptr <- mdb_reserve' defaultWriteFlags txn dbi kval sz
-  assert (fromIntegral len == sz) $ copyLazyBS bs ptr sz
+  let len' = fromIntegral len
+  assert (len' == sz) $ copyLazyBS bs ptr len'
 
 delete :: Binary k => Database k v -> k -> Transaction 'ReadWrite Bool
 delete (Db _ dbi) key = Txn $ \txn ->
