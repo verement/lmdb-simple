@@ -33,7 +33,7 @@ main = do
   print =<< readOnlyTransaction env (get db "nine")  -- Nothing
 @
 
-For additional functions for querying and modifying LMDB databases, see
+Additional functions for querying and modifying LMDB databases are provided in
 "Database.LMDB.Simple.Extra". For an option to access LMDB databases from pure
 code, see "Database.LMDB.Simple.View".
 -}
@@ -243,7 +243,8 @@ transaction (Env env) tx@(Txn tf)
           bracketOnError (mdb_txn_begin env Nothing readOnly) mdb_txn_abort $
           \txn -> tf txn >>= \result -> mdb_txn_commit txn >> return result
 
--- | The exception type raised when a (top-level) transaction is aborted
+-- | The exception type thrown when a (top-level) transaction is explicitly
+-- aborted
 data AbortedTransaction = AbortedTransaction
 
 instance Show AbortedTransaction where
@@ -306,12 +307,11 @@ abort = Txn $ \_ -> throwIO AbortedTransaction
 -- environment, because the unnamed database is used internally to store
 -- entries for each named database.
 --
--- You can (and should) save the database handle returned by this action for
+-- You can (and should) retain the database handle returned by this action for
 -- use in future transactions.
 getDatabase :: Mode mode => Maybe String -> Transaction mode (Database k v)
 getDatabase name = tx
-  where tx    = Txn $ \txn ->
-                        Db (mdb_txn_env txn) <$> mdb_dbi_open' txn name flags
+  where tx = Txn $ \txn -> Db (mdb_txn_env txn) <$> mdb_dbi_open' txn name flags
         flags = [MDB_CREATE | isReadWriteTransaction tx]
 
 -- | Lookup a key in a database and return the corresponding value, or return
