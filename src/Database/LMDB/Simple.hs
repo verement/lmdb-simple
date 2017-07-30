@@ -33,8 +33,9 @@ main = do
   print =<< readOnlyTransaction env (get db "nine")  -- Nothing
 @
 
-For an option to access an LMDB database from pure code, see
-"Database.LMDB.Simple.View".
+For additional functions for querying and modifying LMDB databases, see
+"Database.LMDB.Simple.Extra". For an option to access LMDB databases from pure
+code, see "Database.LMDB.Simple.View".
 -}
 
 module Database.LMDB.Simple
@@ -124,11 +125,7 @@ import Database.LMDB.Simple.Internal
   , isReadWriteTransaction
   )
 
-import Database.LMDB.Simple.Transaction
-  ( lookup
-  , insert
-  , delete
-  )
+import qualified Database.LMDB.Simple.Internal as Internal
 
 import Foreign.C
   ( Errno (Errno)
@@ -313,21 +310,21 @@ abort = Txn $ \_ -> throwIO AbortedTransaction
 -- use in future transactions.
 getDatabase :: Mode mode => Maybe String -> Transaction mode (Database k v)
 getDatabase name = tx
-  where tx    = Txn $ \txn -> Db <$> mdb_dbi_open' txn name flags
+  where tx    = Txn $ \txn ->
+                        Db (mdb_txn_env txn) <$> mdb_dbi_open' txn name flags
         flags = [MDB_CREATE | isReadWriteTransaction tx]
 
 -- | Lookup a key in a database and return the corresponding value, or return
 -- 'Nothing' if the key does not exist in the database.
 get :: (Binary k, Binary v) => Database k v -> k -> Transaction mode (Maybe v)
-get db key = lookup key db
+get = Internal.get
 
 -- | Insert the given key/value pair into a database, or delete the key from
 -- the database if 'Nothing' is given for the value.
 put :: (Binary k, Binary v)
     => Database k v -> k -> Maybe v -> Transaction 'ReadWrite ()
-put db key (Just value) = insert key value db
-put db key  Nothing     = void $ delete key db
+put db key = maybe (void $ Internal.delete db key) (Internal.put db key)
 
 -- | Delete all key/value pairs from a database, leaving the database empty.
 clear :: Database k v -> Transaction 'ReadWrite ()
-clear (Db dbi) = Txn $ \txn -> mdb_clear' txn dbi
+clear (Db _ dbi) = Txn $ \txn -> mdb_clear' txn dbi

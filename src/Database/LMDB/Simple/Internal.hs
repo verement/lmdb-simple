@@ -22,10 +22,19 @@ module Database.LMDB.Simple.Internal
   , withVal
   , defaultWriteFlags
   , overwriteFlags
+  , get
+  , get'
+  , put
+  , delete
   ) where
 
 import Control.Exception
   ( bracket
+  )
+
+import Control.Monad
+  ( (>=>)
+  , void
   )
 
 import Control.Monad.IO.Class
@@ -60,6 +69,9 @@ import Database.LMDB.Raw
   , mdb_cursor_open'
   , mdb_cursor_close'
   , mdb_cursor_get'
+  , mdb_get'
+  , mdb_put'
+  , mdb_del'
   , compileWriteFlags
   )
 
@@ -136,29 +148,29 @@ instance MonadIO (Transaction mode) where
 
 -- | A database maps arbitrary keys to values. This API uses the 'Binary'
 -- class to serialize keys and values for LMDB to store on disk.
-newtype Database k v = Db MDB_dbi'
+data Database k v = Db MDB_env MDB_dbi'
+
+marshalIn :: Binary v => MDB_val -> IO v
+marshalIn (MDB_val len ptr) =
+  decode . fromStrict <$> packCStringLen (castPtr ptr, fromIntegral len)
 
 marshalOut :: Binary v => v -> (MDB_val -> IO a) -> IO a
 marshalOut value f = useAsCStringLen (toStrict $ encode value) $ \(ptr, len) ->
   f $ MDB_val (fromIntegral len) (castPtr ptr)
 
-marshalIn :: Binary v => MDB_val -> (v -> IO a) -> IO a
-marshalIn (MDB_val len ptr) f =
-  f . decode . fromStrict =<< packCStringLen (castPtr ptr, fromIntegral len)
-
 peekVal :: Binary v => Ptr MDB_val -> IO v
-peekVal ptr = peek ptr >>= \val -> marshalIn val return
+peekVal = peek >=> marshalIn
 
 forEach :: MDB_cursor_op -> MDB_cursor_op
         -> MDB_txn -> MDB_dbi' -> Ptr MDB_val -> Ptr MDB_val
         -> a -> (IO a -> IO a) -> IO a
 forEach first next txn dbi kptr vptr acc f =
-  withCursor txn dbi $ \cursor -> cursorGet cursor first acc
+  withCursor txn dbi $ cursorGet first acc
 
-  where cursorGet cursor op acc = do
+  where cursorGet op acc cursor = do
           found <- mdb_cursor_get' op cursor kptr vptr
           if found
-            then f (cursorGet cursor next acc)
+            then f (cursorGet next acc cursor)
             else pure acc
 
 forEachForward, forEachReverse :: MDB_txn -> MDB_dbi'
@@ -176,3 +188,20 @@ withVal val f = alloca $ \ptr -> poke ptr val >> f ptr
 defaultWriteFlags, overwriteFlags :: MDB_WriteFlags
 defaultWriteFlags = compileWriteFlags []
 overwriteFlags    = compileWriteFlags [MDB_CURRENT]
+
+get :: (Binary k, Binary v) => Database k v -> k -> Transaction mode (Maybe v)
+get db key = get' db key >>=
+  maybe (return Nothing) (liftIO . fmap Just . marshalIn)
+
+get' :: Binary k => Database k v -> k -> Transaction mode (Maybe MDB_val)
+get' (Db _ dbi) key = Txn $ \txn -> marshalOut key $ mdb_get' txn dbi
+
+put :: (Binary k, Binary v)
+    => Database k v -> k -> v -> Transaction 'ReadWrite ()
+put (Db _ dbi) key value = Txn $ \txn ->
+  marshalOut key $ \kval -> marshalOut value $ \vval ->
+  void $ mdb_put' defaultWriteFlags txn dbi kval vval
+
+delete :: Binary k => Database k v -> k -> Transaction 'ReadWrite Bool
+delete (Db _ dbi) key = Txn $ \txn ->
+  marshalOut key $ \kval -> mdb_del' txn dbi kval Nothing

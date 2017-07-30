@@ -24,7 +24,7 @@ extra-source-files:  README.md
 library
   hs-source-dirs:      src
   exposed-modules:     Database.LMDB.Simple
-                       Database.LMDB.Simple.Transaction
+                       Database.LMDB.Simple.Extra
                        Database.LMDB.Simple.View
   other-modules:       Database.LMDB.Simple.Internal
   build-depends:       base >= 4.7 && < 5

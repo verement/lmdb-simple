@@ -56,8 +56,7 @@ import Control.Concurrent.MVar
   )
 
 import Control.Monad
-  ( (<=<)
-  , (>=>)
+  ( (>=>)
   )
 
 import Data.Binary
@@ -79,8 +78,7 @@ import Database.LMDB.Simple
   )
 
 import Database.LMDB.Simple.Internal
-  ( Environment (Env)
-  , Database (Db)
+  ( Database (Db)
   , forEachForward
   , forEachReverse
   , marshalOut
@@ -109,15 +107,15 @@ newtype View k v = View (MVar (MDB_txn, MDB_dbi'))
 -- | Create and return a read-only 'View' for the given LMDB database.
 -- Internally, a read-only transaction is opened and kept alive until the
 -- 'View' is garbage collected.
-getView :: Environment rw -> Database k v -> IO (View k v)
-getView (Env env) (Db dbi) = do
+getView :: Database k v -> IO (View k v)
+getView (Db env dbi) = do
   txn <- mdb_txn_begin env Nothing True
   var <- newMVar (txn, dbi)
   mkWeakMVar var $ finalize var
   return (View var)
 
   where finalize :: MVar (MDB_txn, MDB_dbi') -> IO ()
-        finalize = mdb_txn_commit . fst <=< takeMVar
+        finalize = takeMVar >=> mdb_txn_commit . fst
 
 {-# NOINLINE viewIO #-}
 viewIO :: View k v -> ((MDB_txn, MDB_dbi') -> IO a) -> a
@@ -159,13 +157,10 @@ infixl 9 !?
 -- | Lookup the value at a key in the view.
 --
 -- The function will return the corresponding value as @('Just' value)@, or
--- 'Nothing' if the key isn't in the map.
+-- 'Nothing' if the key isn't in the view.
 lookup :: (Binary k, Binary v) => k -> View k v -> Maybe v
-lookup key view = viewIO view $ \(txn, dbi) ->
-  marshalOut key $ mdb_get' txn dbi >=> \mvval ->
-  case mvval of
-    Just vval -> marshalIn vval (return . Just)
-    Nothing   -> return Nothing
+lookup key view = viewIO view $ \(txn, dbi) -> marshalOut key $
+  mdb_get' txn dbi >=> maybe (return Nothing) (fmap Just . marshalIn)
 
 -- | The expression @('findWithDefault' def k view)@ returns the value at key
 -- @k@ or returns default value @def@ when the key is not in the view.
