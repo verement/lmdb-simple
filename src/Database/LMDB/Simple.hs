@@ -1,5 +1,4 @@
 
-{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ConstraintKinds #-}
 
 {-|
@@ -64,8 +63,9 @@ module Database.LMDB.Simple
   , put
   , clear
 
-    -- * Miscellaneous
-  , AccessMode (..)
+    -- * Access modes
+  , ReadWrite
+  , ReadOnly
   , Mode
   , SubMode
   ) where
@@ -114,7 +114,8 @@ import Database.LMDB.Raw
   )
 
 import Database.LMDB.Simple.Internal
-  ( AccessMode (ReadOnly, ReadWrite)
+  ( ReadWrite
+  , ReadOnly
   , Mode
   , SubMode
   , Environment (Env)
@@ -203,12 +204,12 @@ openEnvironment path limits = do
 
 -- | Convenience function for opening an LMDB environment in 'ReadWrite'
 -- mode; see 'openEnvironment'
-openReadWriteEnvironment :: FilePath -> Limits -> IO (Environment 'ReadWrite)
+openReadWriteEnvironment :: FilePath -> Limits -> IO (Environment ReadWrite)
 openReadWriteEnvironment = openEnvironment
 
 -- | Convenience function for opening an LMDB environment in 'ReadOnly'
 -- mode; see 'openEnvironment'
-openReadOnlyEnvironment :: FilePath -> Limits -> IO (Environment 'ReadOnly)
+openReadOnlyEnvironment :: FilePath -> Limits -> IO (Environment ReadOnly)
 openReadOnlyEnvironment = openEnvironment
 
 -- | Check for stale entries in the reader lock table, and return the number
@@ -254,14 +255,14 @@ instance Exception AbortedTransaction
 
 -- | Convenience function for performing a top-level 'ReadWrite' transaction;
 -- see 'transaction'
-readWriteTransaction :: Environment 'ReadWrite
-                     -> Transaction 'ReadWrite a -> IO a
+readWriteTransaction :: Environment ReadWrite
+                     -> Transaction ReadWrite a -> IO a
 readWriteTransaction = transaction
 
 -- | Convenience function for performing a top-level 'ReadOnly' transaction;
 -- see 'transaction'
 readOnlyTransaction :: Environment mode
-                    -> Transaction 'ReadOnly a -> IO a
+                    -> Transaction ReadOnly a -> IO a
 readOnlyTransaction = transaction
 
 -- | Nest a transaction within the current 'ReadWrite' transaction.
@@ -273,7 +274,7 @@ readOnlyTransaction = transaction
 -- parent transaction is ultimately committed.)
 --
 -- An exception will cause the nested transaction to be implicitly aborted.
-nestTransaction :: Transaction 'ReadWrite a -> Transaction 'ReadWrite (Maybe a)
+nestTransaction :: Transaction ReadWrite a -> Transaction ReadWrite (Maybe a)
 nestTransaction tx@(Txn tf) = Txn $ run (isReadOnlyTransaction tx)
   where run ro ptxn = let env = mdb_txn_env ptxn in maybeAborted $
           bracketOnError (mdb_txn_begin env (Just ptxn) ro) mdb_txn_abort $
@@ -322,9 +323,9 @@ get = Internal.get
 -- | Insert the given key/value pair into a database, or delete the key from
 -- the database if 'Nothing' is given for the value.
 put :: (Binary k, Binary v)
-    => Database k v -> k -> Maybe v -> Transaction 'ReadWrite ()
+    => Database k v -> k -> Maybe v -> Transaction ReadWrite ()
 put db key = maybe (void $ Internal.delete db key) (Internal.put db key)
 
 -- | Delete all key/value pairs from a database, leaving the database empty.
-clear :: Database k v -> Transaction 'ReadWrite ()
+clear :: Database k v -> Transaction ReadWrite ()
 clear (Db _ dbi) = Txn $ \txn -> mdb_clear' txn dbi

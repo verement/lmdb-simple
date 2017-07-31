@@ -46,7 +46,6 @@ library
   default-language:    Haskell2010
   default-extensions:  Trustworthy
   other-extensions:    ConstraintKinds
-                       DataKinds
                        KindSignatures
                        TypeFamilies
 

@@ -1,6 +1,4 @@
 
-{-# LANGUAGE DataKinds #-}
-
 -- | This module exports many functions for querying and modifying LMDB
 -- databases using common idioms (albeit in monadic form).
 
@@ -76,7 +74,7 @@ import Database.LMDB.Raw
   )
 
 import Database.LMDB.Simple.Internal
-  ( AccessMode (ReadWrite)
+  ( ReadWrite
   , Transaction (Txn)
   , Database (Db)
   , forEachForward
@@ -132,7 +130,7 @@ notMember key db = not <$> member key db
 -- in the database, the associated value is replaced with the supplied
 -- value. 'insert' is equivalent to @'insertWith' 'const'@.
 insert :: (Binary k, Binary v) => k -> v -> Database k v
-       -> Transaction 'ReadWrite ()
+       -> Transaction ReadWrite ()
 insert key value db = Internal.put db key value
 
 -- | Insert with a function, combining new value and old value. @'insertWith'
@@ -140,7 +138,7 @@ insert key value db = Internal.put db key value
 -- not exist in the database. If the key does exist, the function will insert
 -- the pair @(key, f new_value old_value)@.
 insertWith :: (Binary k, Binary v) => (v -> v -> v) -> k -> v -> Database k v
-           -> Transaction 'ReadWrite ()
+           -> Transaction ReadWrite ()
 insertWith f = insertWithKey (const f)
 
 -- | Insert with a function, combining key, new value and old
@@ -149,14 +147,14 @@ insertWith f = insertWithKey (const f)
 -- function will insert the pair @(key, f key new_value old_value)@. Note that
 -- the key passed to @f@ is the same key passed to 'insertWithKey'.
 insertWithKey :: (Binary k, Binary v) => (k -> v -> v -> v) -> k -> v
-              -> Database k v -> Transaction 'ReadWrite ()
+              -> Database k v -> Transaction ReadWrite ()
 insertWithKey f key value = void . insertLookupWithKey f key value
 
 -- | Combines insert operation with old value retrieval. The monadic action
 -- @('insertLookupWithKey' f k x db)@ has the same effect as @('insertWithKey'
 -- f k x db)@ but returns the same value as @('lookup' k db)@.
 insertLookupWithKey :: (Binary k, Binary v) => (k -> v -> v -> v) -> k -> v
-                    -> Database k v -> Transaction 'ReadWrite (Maybe v)
+                    -> Database k v -> Transaction ReadWrite (Maybe v)
 insertLookupWithKey f key value (Db _ dbi) = Txn $ \txn ->
   withCursor txn dbi $ \cursor -> marshalOut key $ \kval ->
   with kval $ \kptr -> alloca $ \vptr -> do
@@ -232,52 +230,52 @@ foldDatabaseWithKey f = foldrWithKey (\k v a -> f k v `mappend` a) mempty
 
 -- | Delete a key and its value from the database. If the key was not present
 -- in the database, this returns 'False'; otherwise it returns 'True'.
-delete :: Binary k => k -> Database k v -> Transaction 'ReadWrite Bool
+delete :: Binary k => k -> Database k v -> Transaction ReadWrite Bool
 delete = flip Internal.delete
 
 -- | Update a value at a specific key with the result of the provided
 -- function. When the key is not a member of the database, this returns
 -- 'False'; otherwise it returns 'True'.
 adjust :: (Binary k, Binary v) => (v -> v) -> k
-       -> Database k v -> Transaction 'ReadWrite Bool
+       -> Database k v -> Transaction ReadWrite Bool
 adjust f = adjustWithKey (const f)
 
 -- | Adjust a value at a specific key. When the key is not a member of the
 -- database, this returns 'False'; otherwise it returns 'True'.
 adjustWithKey :: (Binary k, Binary v) => (k -> v -> v) -> k
-              -> Database k v -> Transaction 'ReadWrite Bool
+              -> Database k v -> Transaction ReadWrite Bool
 adjustWithKey f = updateWithKey (\k v -> Just $ f k v)
 
 -- | The monadic action @('update' f k db)@ updates the value @x@ at @k@ (if
 -- it is in the database). If @(f x)@ is 'Nothing', the element is deleted. If
 -- it is @('Just' y)@, the key @k@ is bound to the new value @y@.
 update :: (Binary k, Binary v) => (v -> Maybe v) -> k
-       -> Database k v -> Transaction 'ReadWrite Bool
+       -> Database k v -> Transaction ReadWrite Bool
 update f = updateWithKey (const f)
 
 -- | The monadic action @('updateWithKey' f k db)@ updates the value @x@ at
 -- @k@ (if it is in the database). If @(f k x)@ is 'Nothing', the element is
 -- deleted. If it is @('Just' y)@, the key @k@ is bound to the new value @y@.
 updateWithKey :: (Binary k, Binary v) => (k -> v -> Maybe v) -> k
-              -> Database k v -> Transaction 'ReadWrite Bool
+              -> Database k v -> Transaction ReadWrite Bool
 updateWithKey f key db = isJust <$> updateLookupWithKey f key db
 
 -- | Lookup and update. See also 'updateWithKey'. The function returns changed
 -- value, if it is updated. Returns the original key value if the database
 -- entry is deleted.
 updateLookupWithKey :: (Binary k, Binary v) => (k -> v -> Maybe v) -> k
-                    -> Database k v -> Transaction 'ReadWrite (Maybe v)
+                    -> Database k v -> Transaction ReadWrite (Maybe v)
 updateLookupWithKey f = alterWithKey (maybe Nothing . f)
 
 -- | The monadic action @('alter' f k db)@ alters the value @x@ at @k@, or
 -- absence thereof. 'alter' can be used to insert, delete, or update a value
 -- in a database.
 alter :: (Binary k, Binary v) => (Maybe v -> Maybe v) -> k
-      -> Database k v -> Transaction 'ReadWrite ()
+      -> Database k v -> Transaction ReadWrite ()
 alter f key db = void $ alterWithKey (const f) key db
 
 alterWithKey :: (Binary k, Binary v) => (k -> Maybe v -> Maybe v) -> k
-             -> Database k v -> Transaction 'ReadWrite (Maybe v)
+             -> Database k v -> Transaction ReadWrite (Maybe v)
 alterWithKey f key (Db _ dbi) = Txn $ \txn ->
   withCursor txn dbi $ \cursor -> marshalOut key $ \kval ->
   with kval $ \kptr -> alloca $ \vptr -> do

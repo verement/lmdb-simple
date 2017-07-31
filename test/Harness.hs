@@ -1,13 +1,11 @@
 
-{-# LANGUAGE DataKinds #-}
-
 module Harness
   ( setup
   ) where
 
 import Database.LMDB.Simple
 
-setup :: IO (Environment 'ReadWrite, Database Int String)
+setup :: IO (Environment ReadWrite, Database Int String)
 setup = do
   env <- openEnvironment "test/env" defaultLimits
          { mapSize      = 1024 * 1024 * 1024

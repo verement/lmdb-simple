@@ -1,6 +1,4 @@
 
-{-# LANGUAGE DataKinds #-}
-
 module Main where
 
 import Criterion.Main
@@ -23,7 +21,7 @@ n = 10000
 elements :: String
 elements = show n ++ " elements"
 
-insertion :: Environment 'ReadWrite -> Database Int String -> IO ()
+insertion :: Environment ReadWrite -> Database Int String -> IO ()
 insertion env db = transaction env $ do
   clear db
   forM_ [1..n] $ \i -> put db i (Just $ show i)

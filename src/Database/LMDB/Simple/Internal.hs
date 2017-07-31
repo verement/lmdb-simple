@@ -1,10 +1,10 @@
 
-{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Database.LMDB.Simple.Internal
-  ( AccessMode (..)
+  ( ReadWrite
+  , ReadOnly
   , Mode
   , SubMode
   , Environment (..)
@@ -95,28 +95,30 @@ import Foreign
 
 import GHC.Exts (Constraint)
 
-data AccessMode = ReadWrite | ReadOnly
+data ReadWrite
+data ReadOnly
 
-class Mode (mode :: AccessMode) where
-  isReadOnlyMode :: proxy mode -> Bool
+class Mode mode where
+  isReadOnlyMode :: mode -> Bool
 
-instance Mode 'ReadWrite where
+instance Mode ReadWrite where
   isReadOnlyMode _ = False
 
-instance Mode 'ReadOnly where
+instance Mode ReadOnly where
   isReadOnlyMode _ = True
 
-type family SubMode (a :: AccessMode)
-                    (b :: AccessMode) :: Constraint where
-  SubMode a 'ReadWrite = a ~ 'ReadWrite
-  SubMode a 'ReadOnly  = ()
+type family SubMode a b :: Constraint where
+  SubMode a ReadWrite = a ~ ReadWrite
+  SubMode a ReadOnly  = ()
 
 -- | An LMDB environment is a directory or file on disk that contains one or
 -- more databases, and has an associated (reader) lock table.
-newtype Environment (mode :: AccessMode) = Env MDB_env
+newtype Environment mode = Env MDB_env
 
 isReadOnlyEnvironment :: Mode mode => Environment mode -> Bool
-isReadOnlyEnvironment = isReadOnlyMode
+isReadOnlyEnvironment = isReadOnlyMode . mode
+  where mode :: Environment mode -> mode
+        mode = undefined
 
 -- | An LMDB transaction is an atomic unit for reading and/or changing one or
 -- more LMDB databases within an environment, during which the transaction has
@@ -133,11 +135,11 @@ isReadOnlyEnvironment = isReadOnlyMode
 -- 'MonadIO' instance so it is possible to perform arbitrary I/O within a
 -- transaction using 'liftIO'. However, such 'IO' actions are not atomic and
 -- cannot be rolled back if the transaction is aborted, so use with care.
-newtype Transaction (mode :: AccessMode) a = Txn (MDB_txn -> IO a)
+newtype Transaction mode a = Txn (MDB_txn -> IO a)
 
 isReadOnlyTransaction :: Mode mode => Transaction mode a -> Bool
 isReadOnlyTransaction = isReadOnlyMode . mode
-  where mode :: Transaction mode a -> proxy mode
+  where mode :: Transaction mode a -> mode
         mode = undefined
 
 isReadWriteTransaction :: Mode mode => Transaction mode a -> Bool
@@ -214,7 +216,7 @@ get' :: Binary k => Database k v -> k -> Transaction mode (Maybe MDB_val)
 get' (Db _ dbi) key = Txn $ \txn -> marshalOut key $ mdb_get' txn dbi
 
 put :: (Binary k, Binary v)
-    => Database k v -> k -> v -> Transaction 'ReadWrite ()
+    => Database k v -> k -> v -> Transaction ReadWrite ()
 put (Db _ dbi) key value = Txn $ \txn ->
   marshalOut key $ \kval -> do
   let bs = encode value
@@ -223,6 +225,6 @@ put (Db _ dbi) key value = Txn $ \txn ->
   let len' = fromIntegral len
   assert (len' == sz) $ copyLazyBS bs ptr len'
 
-delete :: Binary k => Database k v -> k -> Transaction 'ReadWrite Bool
+delete :: Binary k => Database k v -> k -> Transaction ReadWrite Bool
 delete (Db _ dbi) key = Txn $ \txn ->
   marshalOut key $ \kval -> mdb_del' txn dbi kval Nothing
