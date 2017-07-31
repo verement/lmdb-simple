@@ -275,12 +275,12 @@ readOnlyTransaction = transaction
 --
 -- An exception will cause the nested transaction to be implicitly aborted.
 nestTransaction :: Transaction ReadWrite a -> Transaction ReadWrite (Maybe a)
-nestTransaction tx@(Txn tf) = Txn $ run (isReadOnlyTransaction tx)
-  where run ro ptxn = let env = mdb_txn_env ptxn in maybeAborted $
-          bracketOnError (mdb_txn_begin env (Just ptxn) ro) mdb_txn_abort $
-          \ctxn -> tf ctxn >>= \result -> mdb_txn_commit ctxn >> return result
+nestTransaction (Txn tf) = Txn $ \ptxn ->
+  let env = mdb_txn_env ptxn in maybeAborted $
+  bracketOnError (mdb_txn_begin env (Just ptxn) False) mdb_txn_abort $
+  \ctxn -> tf ctxn >>= \result -> mdb_txn_commit ctxn >> return result
 
-        maybeAborted :: IO a -> IO (Maybe a)
+  where maybeAborted :: IO a -> IO (Maybe a)
         maybeAborted io = either
           (\e -> let _ = e :: AbortedTransaction in Nothing) Just <$> try io
 

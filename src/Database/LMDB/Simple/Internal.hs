@@ -98,14 +98,11 @@ import GHC.Exts (Constraint)
 data ReadWrite
 data ReadOnly
 
-class Mode mode where
-  isReadOnlyMode :: mode -> Bool
+class Mode a where
+  isReadOnlyMode :: a -> Bool
 
-instance Mode ReadWrite where
-  isReadOnlyMode _ = False
-
-instance Mode ReadOnly where
-  isReadOnlyMode _ = True
+instance Mode ReadWrite where isReadOnlyMode _ = False
+instance Mode ReadOnly  where isReadOnlyMode _ = True
 
 type family SubMode a b :: Constraint where
   SubMode a ReadWrite = a ~ ReadWrite
@@ -146,7 +143,7 @@ isReadWriteTransaction :: Mode mode => Transaction mode a -> Bool
 isReadWriteTransaction = not . isReadOnlyTransaction
 
 instance Functor (Transaction mode) where
-  fmap f (Txn tf) = Txn $ \txn -> fmap f (tf txn)
+  fmap f (Txn tf) = Txn $ fmap f . tf
 
 instance Applicative (Transaction mode) where
   pure x = Txn $ \_ -> pure x
@@ -156,7 +153,7 @@ instance Monad (Transaction mode) where
   Txn tf >>= f = Txn $ \txn -> tf txn >>= \r -> let Txn tf' = f r in tf' txn
 
 instance MonadIO (Transaction mode) where
-  liftIO io = Txn $ const io
+  liftIO = Txn . const
 
 -- | A database maps arbitrary keys to values. This API uses the 'Binary'
 -- class to serialize keys and values for LMDB to store on disk.
