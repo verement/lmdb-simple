@@ -1,1 +1,3 @@
 .stack-work
+*.mdb
+*.mdb-lock
