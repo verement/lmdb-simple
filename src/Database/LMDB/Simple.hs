@@ -32,9 +32,16 @@ main = do
   print =<< readOnlyTransaction env (get db "nine")  -- Nothing
 @
 
-Additional functions for querying and modifying LMDB databases are provided in
-"Database.LMDB.Simple.Extra". For an option to access LMDB databases from pure
-code, see "Database.LMDB.Simple.View".
+These additional APIs are available:
+
+  * "Database.LMDB.Simple.Extra" provides additional functions for querying
+    and modifying LMDB databases within the 'Transaction' monad
+
+  * "Database.LMDB.Simple.View" provides a read-only snapshot of an LMDB
+    database that can be accessed from pure code
+
+  * "Database.LMDB.Simple.DBRef" provides a mutable variable (accessed from
+    'IO') that is tied to a particular key that persists in an LMDB database
 -}
 
 module Database.LMDB.Simple

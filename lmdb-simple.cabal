@@ -35,6 +35,7 @@ library
   hs-source-dirs:      src
 
   exposed-modules:     Database.LMDB.Simple
+                       Database.LMDB.Simple.DBRef
                        Database.LMDB.Simple.Extra
                        Database.LMDB.Simple.View
   other-modules:       Database.LMDB.Simple.Internal
@@ -64,6 +65,7 @@ test-suite hspec
   hs-source-dirs:      test
   main-is:             hspec.hs
   other-modules:       Database.LMDB.SimpleSpec
+                       Database.LMDB.Simple.DBRefSpec
                        Harness
   build-depends:       base
                      , hspec
