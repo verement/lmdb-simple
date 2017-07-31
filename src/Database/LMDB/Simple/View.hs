@@ -1,7 +1,8 @@
 
-{-| This module provides a read-only 'View' for an LMDB database at a single
-point in time. Because the view is unchanging, it can be used within pure
-code. Behind the scenes, data is accessed from the underlying LMDB memory map.
+{-| This module provides a read-only 'View' that is a snapshot of an LMDB
+database at a single point in time. Because the view is unchanging, it can be
+used within pure code. Behind the scenes, data is accessed from the underlying
+LMDB memory map.
 
 Each 'View' internally keeps open a read-only transaction in the LMDB
 environment (consuming a slot in the lock table), so their use should be

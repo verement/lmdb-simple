@@ -122,7 +122,7 @@ isReadOnlyEnvironment = isReadOnlyMode . mode
 
 -- | An LMDB transaction is an atomic unit for reading and/or changing one or
 -- more LMDB databases within an environment, during which the transaction has
--- a consistent view of the databases and is unaffected by any other
+-- a consistent view of the database(s) and is unaffected by any other
 -- transaction. The effects of a transaction can either be committed to the
 -- LMDB environment atomically, or they can be rolled back with no observable
 -- effect on the environment if the transaction is aborted.
