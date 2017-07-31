@@ -25,6 +25,7 @@ cabal-version:       >=1.10
 
 extra-source-files:  README.md
                      stack.yaml
+                     test/env/.keep
 
 source-repository head
   type:              git
