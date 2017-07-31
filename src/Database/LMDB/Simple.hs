@@ -219,7 +219,7 @@ clearStaleReaders (Env env) = mdb_reader_check env
 
 -- | Perform a top-level transaction in either 'ReadWrite' or 'ReadOnly'
 -- mode. A transaction may only be 'ReadWrite' if the environment is also
--- 'ReadWrite'.
+-- 'ReadWrite' (enforced by the 'SubMode' constraint).
 --
 -- Once completed, the transaction will be committed and the result
 -- returned. An exception will cause the transaction to be implicitly aborted.

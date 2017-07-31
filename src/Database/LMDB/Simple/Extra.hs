@@ -151,8 +151,8 @@ insertWithKey :: (Binary k, Binary v) => (k -> v -> v -> v) -> k -> v
 insertWithKey f key value = void . insertLookupWithKey f key value
 
 -- | Combines insert operation with old value retrieval. The monadic action
--- @('insertLookupWithKey' f k x db)@ has the same effect as @('insertWithKey'
--- f k x db)@ but returns the same value as @('lookup' k db)@.
+-- @('insertLookupWithKey' f k x db)@ returns the same value as @('lookup' k
+-- db)@ but has the same effect as @('insertWithKey' f k x db)@.
 insertLookupWithKey :: (Binary k, Binary v) => (k -> v -> v -> v) -> k -> v
                     -> Database k v -> Transaction ReadWrite (Maybe v)
 insertLookupWithKey f key value (Db _ dbi) = Txn $ \txn ->
