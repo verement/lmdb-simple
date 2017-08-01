@@ -41,8 +41,8 @@ library
   other-modules:       Database.LMDB.Simple.Internal
 
   build-depends:       base >= 4.7 && < 5
-                     , binary >= 0.8 && < 0.9
                      , bytestring >= 0.10 && < 0.11
+                     , serialise >= 0.1 && < 0.2
                      , lmdb >= 0.2 && < 0.3
   ghc-options:         -Wall -Wno-name-shadowing -Wno-unused-do-bind
   default-language:    Haskell2010

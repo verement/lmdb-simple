@@ -98,10 +98,6 @@ import Control.Monad
   , void
   )
 
-import Data.Binary
-  ( Binary
-  )
-
 import Database.LMDB.Raw
   ( LMDB_Error (LMDB_Error, e_code)
   , MDB_EnvFlag (MDB_NOSUBDIR, MDB_RDONLY)
@@ -128,6 +124,7 @@ import Database.LMDB.Simple.Internal
   , Environment (Env)
   , Transaction (Txn)
   , Database (Db)
+  , Serialise
   , isReadOnlyEnvironment
   , isReadOnlyTransaction
   , isReadWriteTransaction
@@ -324,12 +321,13 @@ getDatabase name = tx
 
 -- | Lookup a key in a database and return the corresponding value, or return
 -- 'Nothing' if the key does not exist in the database.
-get :: (Binary k, Binary v) => Database k v -> k -> Transaction mode (Maybe v)
+get :: (Serialise k, Serialise v)
+    => Database k v -> k -> Transaction mode (Maybe v)
 get = Internal.get
 
 -- | Insert the given key/value pair into a database, or delete the key from
 -- the database if 'Nothing' is given for the value.
-put :: (Binary k, Binary v)
+put :: (Serialise k, Serialise v)
     => Database k v -> k -> Maybe v -> Transaction ReadWrite ()
 put db key = maybe (void $ Internal.delete db key) (Internal.put db key)
 

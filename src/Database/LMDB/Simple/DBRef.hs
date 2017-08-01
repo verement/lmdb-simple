@@ -21,11 +21,6 @@ import Control.Monad.IO.Class
   ( MonadIO (liftIO)
   )
 
-import Data.Binary
-  ( Binary
-  , encode
-  )
-
 import Data.ByteString
   ( ByteString
   )
@@ -56,6 +51,8 @@ import Database.LMDB.Simple.Internal
   , Database (..)
   , ReadWrite
   , ReadOnly
+  , Serialise
+  , serialise
   , marshalIn
   , marshalOut
   , defaultWriteFlags
@@ -77,44 +74,45 @@ data DBRef mode a = Ref (Environment mode) MDB_dbi' ByteString
 
 -- | Create a new 'DBRef' for the given key and database within the given
 -- environment.
-newDBRef :: Binary k
+newDBRef :: Serialise k
          => Environment mode -> Database k a -> k -> IO (DBRef mode a)
-newDBRef env (Db _ dbi) = return . Ref env dbi . toStrict . encode
+newDBRef env (Db _ dbi) = return . Ref env dbi . toStrict . serialise
 
 withVal :: ByteString -> (MDB_val -> IO a) -> IO a
 withVal bs f = unsafeUseAsCStringLen bs $ \(ptr, len) ->
   f $ MDB_val (fromIntegral len) (castPtr ptr)
 
 -- | Read the current value of a 'DBRef'.
-readDBRef :: Binary a => DBRef mode a -> IO (Maybe a)
+readDBRef :: Serialise a => DBRef mode a -> IO (Maybe a)
 readDBRef ref@(Ref env dbi key) = transaction env (tx ref)
 
-  where tx :: Binary a => DBRef mode a -> Transaction ReadOnly (Maybe a)
+  where tx :: Serialise a => DBRef mode a -> Transaction ReadOnly (Maybe a)
         tx _ = Txn $ \txn -> withVal key $ mdb_get' txn dbi >=>
           maybe (return Nothing) (liftIO . fmap Just . marshalIn)
 
 -- | Write a new value into a 'DBRef'.
-writeDBRef :: Binary a => DBRef ReadWrite a -> Maybe a -> IO ()
+writeDBRef :: Serialise a => DBRef ReadWrite a -> Maybe a -> IO ()
 writeDBRef (Ref env dbi key) = transaction env . maybe delKey putKey
 
   where delKey :: Transaction ReadWrite ()
         delKey = Txn $ \txn -> withVal key $ \kval ->
           void $ mdb_del' txn dbi kval Nothing
 
-        putKey :: Binary a => a -> Transaction ReadWrite ()
+        putKey :: Serialise a => a -> Transaction ReadWrite ()
         putKey value = Txn $ \txn -> withVal key $ \kval ->
           marshalOut value $ \vval ->  -- FIXME: use mdb_reserve'
           void $ mdb_put' defaultWriteFlags txn dbi kval vval
 
 -- | Atomically mutate the contents of a 'DBRef'.
-modifyDBRef_ :: Binary a => DBRef ReadWrite a -> (Maybe a -> Maybe a) -> IO ()
+modifyDBRef_ :: Serialise a => DBRef ReadWrite a -> (Maybe a -> Maybe a) -> IO ()
 modifyDBRef_ ref f = modifyDBRef ref $ \x -> (f x, ())
 
 -- | Atomically mutate the contents of a 'DBRef' and return a value.
-modifyDBRef :: Binary a => DBRef ReadWrite a -> (Maybe a -> (Maybe a, b)) -> IO b
+modifyDBRef :: Serialise a
+            => DBRef ReadWrite a -> (Maybe a -> (Maybe a, b)) -> IO b
 modifyDBRef (Ref env dbi key) = transaction env . tx
 
-  where tx :: Binary a => (Maybe a -> (Maybe a, b)) -> Transaction ReadWrite b
+  where tx :: Serialise a => (Maybe a -> (Maybe a, b)) -> Transaction ReadWrite b
         tx f = Txn $ \txn -> withVal key $ \kval -> mdb_get' txn dbi kval >>=
           maybe (return Nothing) (fmap Just . marshalIn) >>= \x ->
           let (x', r) = f x in maybe (mdb_del' txn dbi kval Nothing)

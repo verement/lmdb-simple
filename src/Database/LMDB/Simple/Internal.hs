@@ -10,9 +10,11 @@ module Database.LMDB.Simple.Internal
   , Environment (..)
   , Transaction (..)
   , Database (..)
+  , Serialise
   , isReadOnlyEnvironment
   , isReadOnlyTransaction
   , isReadWriteTransaction
+  , serialise
   , marshalOut
   , marshalIn
   , peekVal
@@ -27,6 +29,12 @@ module Database.LMDB.Simple.Internal
   , delete
   ) where
 
+import Codec.Serialise
+  ( Serialise
+  , serialise
+  , deserialise
+  )
+
 import Control.Exception
   ( assert
   , bracket
@@ -39,12 +47,6 @@ import Control.Monad
 
 import Control.Monad.IO.Class
   ( MonadIO (liftIO)
-  )
-
-import Data.Binary
-  ( Binary
-  , encode
-  , decode
   )
 
 import Data.ByteString
@@ -155,20 +157,22 @@ instance Monad (Transaction mode) where
 instance MonadIO (Transaction mode) where
   liftIO = Txn . const
 
--- | A database maps arbitrary keys to values. This API uses the 'Binary'
--- class to serialize keys and values for LMDB to store on disk.
+-- | A database maps arbitrary keys to values. This API uses the 'Serialise'
+-- class to encode and decode keys and values for LMDB to store on disk. For
+-- details on creating your own instances of this class, see
+-- "Codec.Serialise.Tutorial".
 data Database k v = Db MDB_env MDB_dbi'
 
-peekVal :: Binary v => Ptr MDB_val -> IO v
+peekVal :: Serialise v => Ptr MDB_val -> IO v
 peekVal = peek >=> marshalIn
 
-marshalIn :: Binary v => MDB_val -> IO v
+marshalIn :: Serialise v => MDB_val -> IO v
 marshalIn (MDB_val len ptr) =
-  decode . fromStrict <$> packCStringLen (castPtr ptr, fromIntegral len)
+  deserialise . fromStrict <$> packCStringLen (castPtr ptr, fromIntegral len)
 
-marshalOut :: Binary v => v -> (MDB_val -> IO a) -> IO a
+marshalOut :: Serialise v => v -> (MDB_val -> IO a) -> IO a
 marshalOut value f =
-  unsafeUseAsCStringLen (toStrict $ encode value) $ \(ptr, len) ->
+  unsafeUseAsCStringLen (toStrict $ serialise value) $ \(ptr, len) ->
   f $ MDB_val (fromIntegral len) (castPtr ptr)
 
 copyLazyBS :: BSL.ByteString -> Ptr Word8 -> Int -> IO ()
@@ -205,23 +209,24 @@ defaultWriteFlags, overwriteFlags :: MDB_WriteFlags
 defaultWriteFlags = compileWriteFlags []
 overwriteFlags    = compileWriteFlags [MDB_CURRENT]
 
-get :: (Binary k, Binary v) => Database k v -> k -> Transaction mode (Maybe v)
+get :: (Serialise k, Serialise v)
+    => Database k v -> k -> Transaction mode (Maybe v)
 get db key = get' db key >>=
   maybe (return Nothing) (liftIO . fmap Just . marshalIn)
 
-get' :: Binary k => Database k v -> k -> Transaction mode (Maybe MDB_val)
+get' :: Serialise k => Database k v -> k -> Transaction mode (Maybe MDB_val)
 get' (Db _ dbi) key = Txn $ \txn -> marshalOut key $ mdb_get' txn dbi
 
-put :: (Binary k, Binary v)
+put :: (Serialise k, Serialise v)
     => Database k v -> k -> v -> Transaction ReadWrite ()
 put (Db _ dbi) key value = Txn $ \txn ->
   marshalOut key $ \kval -> do
-  let bs = encode value
+  let bs = serialise value
       sz = fromIntegral (BSL.length bs)
   MDB_val len ptr <- mdb_reserve' defaultWriteFlags txn dbi kval sz
   let len' = fromIntegral len
   assert (len' == sz) $ copyLazyBS bs ptr len'
 
-delete :: Binary k => Database k v -> k -> Transaction ReadWrite Bool
+delete :: Serialise k => Database k v -> k -> Transaction ReadWrite Bool
 delete (Db _ dbi) key = Txn $ \txn ->
   marshalOut key $ \kval -> mdb_del' txn dbi kval Nothing
