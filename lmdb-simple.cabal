@@ -1,6 +1,6 @@
 
 name:                lmdb-simple
-version:             0.1.0.0
+version:             0.2.0.0
 
 synopsis:            Simple API for LMDB
 
@@ -41,9 +41,9 @@ library
   other-modules:       Database.LMDB.Simple.Internal
 
   build-depends:       base >= 4.7 && < 5
-                     , binary >= 0.8
-                     , bytestring
-                     , lmdb >= 0.2
+                     , binary >= 0.8 && < 0.9
+                     , bytestring >= 0.10 && < 0.11
+                     , lmdb >= 0.2 && < 0.3
   ghc-options:         -Wall -Wno-name-shadowing -Wno-unused-do-bind
   default-language:    Haskell2010
   default-extensions:  Trustworthy
