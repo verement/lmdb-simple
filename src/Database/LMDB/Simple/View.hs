@@ -14,7 +14,7 @@ guaranteed.
 module Database.LMDB.Simple.View
   ( -- * Creating
     View
-  , getView
+  , newView
 
     -- * Operators
   , (!)
@@ -108,8 +108,8 @@ newtype View k v = View (MVar (MDB_txn, MDB_dbi'))
 -- | Create and return a read-only 'View' for the given LMDB database.
 -- Internally, a read-only transaction is opened and kept alive until the
 -- 'View' is garbage collected.
-getView :: Database k v -> IO (View k v)
-getView (Db env dbi) = do
+newView :: Database k v -> IO (View k v)
+newView (Db env dbi) = do
   txn <- mdb_txn_begin env Nothing True
   var <- newMVar (txn, dbi)
   mkWeakMVar var $ finalize var
