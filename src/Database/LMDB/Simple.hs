@@ -77,10 +77,6 @@ module Database.LMDB.Simple
   , SubMode
   ) where
 
-import Prelude hiding
-  ( lookup
-  )
-
 import Control.Concurrent
   ( runInBoundThread
   )
@@ -129,7 +125,6 @@ import Database.LMDB.Simple.Internal
   , isReadOnlyTransaction
   , isReadWriteTransaction
   )
-
 import qualified Database.LMDB.Simple.Internal as Internal
 
 import Foreign.C
