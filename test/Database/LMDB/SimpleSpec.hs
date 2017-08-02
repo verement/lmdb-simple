@@ -29,8 +29,9 @@ spec = beforeAll setup $ do
 
   describe "transactions" $ do
     it "aborts" $ \(env, db) ->
-      transaction env (put db 0 (Just "zero") >> abort)
-      `shouldThrow` (const True :: Selector AbortedTransaction)
+      ( do transaction env $ put db 0 Nothing
+           transaction env $ put db 0 (Just "zero") >> abort
+      ) `shouldThrow` (const True :: Selector AbortedTransaction)
 
     it "rolls back" $ \(env, db) ->
       readOnlyTransaction env (get db 0)

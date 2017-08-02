@@ -22,6 +22,10 @@ spec = beforeAll (setup >>= \(env, db) -> newDBRef env db 0) $ do
     (modifyDBRef_ ref (fmap (++ "bar")) >> readDBRef ref)
     `shouldReturn` Just "foobar"
 
-  it "can be made empty again" $ \ref ->
-    (writeDBRef ref Nothing >> readDBRef ref)
+  it "can be emptied with modifyDBRef_" $ \ref ->
+    (modifyDBRef_ ref (const Nothing) >> readDBRef ref)
+    `shouldReturn` Nothing
+
+  it "can be emptied with writeDBRef" $ \ref ->
+    (writeDBRef ref (Just "baz") >> writeDBRef ref Nothing >> readDBRef ref)
     `shouldReturn` Nothing
