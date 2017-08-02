@@ -13,32 +13,15 @@ module Database.LMDB.Simple.DBRef
   ) where
 
 import Control.Monad
-  ( (>=>)
-  , void
-  )
-
-import Control.Monad.IO.Class
-  ( MonadIO (liftIO)
+  ( void
   )
 
 import Data.ByteString
   ( ByteString
   )
 
-import Data.ByteString.Lazy
-  ( toStrict
-  )
-
-import Data.ByteString.Unsafe
-  ( unsafeUseAsCStringLen
-  )
-
 import Database.LMDB.Raw
   ( MDB_dbi'
-  , MDB_val (..)
-  , mdb_get'
-  , mdb_put'
-  , mdb_del'
   )
 
 import Database.LMDB.Simple
@@ -52,14 +35,10 @@ import Database.LMDB.Simple.Internal
   , ReadWrite
   , ReadOnly
   , Serialise
-  , serialise
-  , marshalIn
-  , marshalOut
-  , defaultWriteFlags
-  )
-
-import Foreign
-  ( castPtr
+  , serialiseBS
+  , getBS
+  , putBS
+  , deleteBS
   )
 
 -- | A 'DBRef' is a reference to a particular key within an LMDB database. It
@@ -76,32 +55,26 @@ data DBRef mode a = Ref (Environment mode) MDB_dbi' ByteString
 -- environment.
 newDBRef :: Serialise k
          => Environment mode -> Database k a -> k -> IO (DBRef mode a)
-newDBRef env (Db _ dbi) = return . Ref env dbi . toStrict . serialise
-
-withVal :: ByteString -> (MDB_val -> IO a) -> IO a
-withVal bs f = unsafeUseAsCStringLen bs $ \(ptr, len) ->
-  f $ MDB_val (fromIntegral len) (castPtr ptr)
+newDBRef env (Db _ dbi) = return . Ref env dbi . serialiseBS
 
 -- | Read the current value of a 'DBRef'.
 readDBRef :: Serialise a => DBRef mode a -> IO (Maybe a)
-readDBRef ref@(Ref env dbi key) = transaction env (tx ref)
+readDBRef ref@(Ref env dbi key) = transaction env (tx env ref)
 
-  where tx :: Serialise a => DBRef mode a -> Transaction ReadOnly (Maybe a)
-        tx _ = Txn $ \txn -> withVal key $ mdb_get' txn dbi >=>
-          maybe (return Nothing) (liftIO . fmap Just . marshalIn)
+  where tx :: Serialise a
+           => Environment mode -> DBRef mode a -> Transaction ReadOnly (Maybe a)
+        tx (Env env) _ = getBS (Db env dbi) key
 
 -- | Write a new value into a 'DBRef'.
 writeDBRef :: Serialise a => DBRef ReadWrite a -> Maybe a -> IO ()
-writeDBRef (Ref env dbi key) = transaction env . maybe delKey putKey
+writeDBRef (Ref env dbi key) = transaction env . maybe (delKey env) (putKey env)
 
-  where delKey :: Transaction ReadWrite ()
-        delKey = Txn $ \txn -> withVal key $ \kval ->
-          void $ mdb_del' txn dbi kval Nothing
+  where delKey :: Environment mode -> Transaction ReadWrite ()
+        delKey (Env env) = void $ deleteBS (Db env dbi) key
 
-        putKey :: Serialise a => a -> Transaction ReadWrite ()
-        putKey value = Txn $ \txn -> withVal key $ \kval ->
-          marshalOut value $ \vval ->  -- FIXME: use mdb_reserve'
-          void $ mdb_put' defaultWriteFlags txn dbi kval vval
+        putKey :: Serialise a
+               => Environment mode -> a -> Transaction ReadWrite ()
+        putKey (Env env) = putBS (Db env dbi) key
 
 -- | Atomically mutate the contents of a 'DBRef'.
 modifyDBRef_ :: Serialise a => DBRef ReadWrite a -> (Maybe a -> Maybe a) -> IO ()
@@ -110,11 +83,12 @@ modifyDBRef_ ref f = modifyDBRef ref $ \x -> (f x, ())
 -- | Atomically mutate the contents of a 'DBRef' and return a value.
 modifyDBRef :: Serialise a
             => DBRef ReadWrite a -> (Maybe a -> (Maybe a, b)) -> IO b
-modifyDBRef (Ref env dbi key) = transaction env . tx
+modifyDBRef (Ref env dbi key) = transaction env . tx env
 
-  where tx :: Serialise a => (Maybe a -> (Maybe a, b)) -> Transaction ReadWrite b
-        tx f = Txn $ \txn -> withVal key $ \kval -> mdb_get' txn dbi kval >>=
-          maybe (return Nothing) (fmap Just . marshalIn) >>= \x ->
-          let (x', r) = f x in maybe (mdb_del' txn dbi kval Nothing)
-            (flip marshalOut $ mdb_put' defaultWriteFlags txn dbi kval) x' >>
+  where tx :: Serialise a
+           => Environment mode -> (Maybe a -> (Maybe a, b))
+           -> Transaction ReadWrite b
+        tx (Env env) f = let db = Db env dbi in
+          getBS db key >>= \x -> let (x', r) = f x in
+          maybe (void $ deleteBS db key) (putBS db key) x' >>
           return r

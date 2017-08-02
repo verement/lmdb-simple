@@ -14,7 +14,7 @@ module Database.LMDB.Simple.Internal
   , isReadOnlyEnvironment
   , isReadOnlyTransaction
   , isReadWriteTransaction
-  , serialise
+  , serialiseBS
   , marshalOut
   , marshalIn
   , peekVal
@@ -25,8 +25,12 @@ module Database.LMDB.Simple.Internal
   , overwriteFlags
   , get
   , get'
+  , getBS
+  , getBS'
   , put
+  , putBS
   , delete
+  , deleteBS
   ) where
 
 import Codec.Serialise
@@ -95,7 +99,9 @@ import Foreign
   , copyBytes
   )
 
-import GHC.Exts (Constraint)
+import GHC.Exts
+  ( Constraint
+  )
 
 data ReadWrite
 data ReadOnly
@@ -166,13 +172,22 @@ data Database k v = Db MDB_env MDB_dbi'
 peekVal :: Serialise v => Ptr MDB_val -> IO v
 peekVal = peek >=> marshalIn
 
+serialiseLBS :: Serialise v => v -> BSL.ByteString
+serialiseLBS = serialise
+
+serialiseBS :: Serialise v => v -> BS.ByteString
+serialiseBS = toStrict . serialiseLBS
+
 marshalIn :: Serialise v => MDB_val -> IO v
 marshalIn (MDB_val len ptr) =
   deserialise . fromStrict <$> packCStringLen (castPtr ptr, fromIntegral len)
 
 marshalOut :: Serialise v => v -> (MDB_val -> IO a) -> IO a
-marshalOut value f =
-  unsafeUseAsCStringLen (toStrict $ serialise value) $ \(ptr, len) ->
+marshalOut = marshalOutBS . serialiseBS
+
+marshalOutBS :: BS.ByteString -> (MDB_val -> IO a) -> IO a
+marshalOutBS bs f =
+  unsafeUseAsCStringLen bs $ \(ptr, len) ->
   f $ MDB_val (fromIntegral len) (castPtr ptr)
 
 copyLazyBS :: BSL.ByteString -> Ptr Word8 -> Int -> IO ()
@@ -211,22 +226,36 @@ overwriteFlags    = compileWriteFlags [MDB_CURRENT]
 
 get :: (Serialise k, Serialise v)
     => Database k v -> k -> Transaction mode (Maybe v)
-get db key = get' db key >>=
-  maybe (return Nothing) (liftIO . fmap Just . marshalIn)
+get db = getBS db . serialiseBS
 
 get' :: Serialise k => Database k v -> k -> Transaction mode (Maybe MDB_val)
-get' (Db _ dbi) key = Txn $ \txn -> marshalOut key $ mdb_get' txn dbi
+get' db = getBS' db . serialiseBS
+
+getBS :: Serialise v
+      => Database k v -> BS.ByteString -> Transaction mode (Maybe v)
+getBS db keyBS = getBS' db keyBS >>=
+  maybe (return Nothing) (liftIO . fmap Just . marshalIn)
+
+getBS' :: Database k v -> BS.ByteString -> Transaction mode (Maybe MDB_val)
+getBS' (Db _ dbi) keyBS = Txn $ \txn -> marshalOutBS keyBS $ mdb_get' txn dbi
 
 put :: (Serialise k, Serialise v)
     => Database k v -> k -> v -> Transaction ReadWrite ()
-put (Db _ dbi) key value = Txn $ \txn ->
-  marshalOut key $ \kval -> do
-  let bs = serialise value
-      sz = fromIntegral (BSL.length bs)
+put db = putBS db . serialiseBS
+
+putBS :: Serialise v
+     => Database k v -> BS.ByteString -> v -> Transaction ReadWrite ()
+putBS (Db _ dbi) keyBS value = Txn $ \txn ->
+  marshalOutBS keyBS $ \kval -> do
+  let valueLBS = serialiseLBS value
+      sz = fromIntegral (BSL.length valueLBS)
   MDB_val len ptr <- mdb_reserve' defaultWriteFlags txn dbi kval sz
   let len' = fromIntegral len
-  assert (len' == sz) $ copyLazyBS bs ptr len'
+  assert (len' == sz) $ copyLazyBS valueLBS ptr len'
 
 delete :: Serialise k => Database k v -> k -> Transaction ReadWrite Bool
-delete (Db _ dbi) key = Txn $ \txn ->
-  marshalOut key $ \kval -> mdb_del' txn dbi kval Nothing
+delete db = deleteBS db . serialiseBS
+
+deleteBS :: Database k v -> BS.ByteString -> Transaction ReadWrite Bool
+deleteBS (Db _ dbi) key = Txn $ \txn ->
+  marshalOutBS key $ \kval -> mdb_del' txn dbi kval Nothing
