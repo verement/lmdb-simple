@@ -35,7 +35,7 @@ main = do
 These additional APIs are available:
 
   * "Database.LMDB.Simple.Extra" provides additional functions for querying
-    and modifying LMDB databases within the 'Transaction' monad
+    and modifying LMDB databases from within the 'Transaction' monad
 
   * "Database.LMDB.Simple.View" provides a read-only snapshot of an LMDB
     database that can be accessed from pure code
