@@ -27,6 +27,16 @@ spec = beforeAll setup $ do
       transaction env (put db 50 Nothing >> (,) <$> get db 50 <*> size db)
       `shouldReturn` (Nothing, 99)
 
+    it "correctly serializes non-surrogate chars" $ \(env, db) ->
+      let nonSurrogates = [minBound..'\xD7FF'] ++ ['\xE000'..maxBound] in
+        transaction env (put db 0 (Just nonSurrogates) >> get db 0)
+        `shouldReturn` Just nonSurrogates
+
+    it "correctly serializes surrogate chars" $ \(env, db) ->
+      let surrogates = ['\xD800'..'\xDFFF'] in
+        transaction env (put db 0 (Just surrogates) >> get db 0)
+        `shouldReturn` Just surrogates
+
   describe "transactions" $ do
     it "aborts" $ \(env, db) ->
       ( do transaction env $ put db 0 Nothing
