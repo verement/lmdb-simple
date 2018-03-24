@@ -8,8 +8,8 @@ from a persistent [Lightning Memory-mapped Database][LMDB] on disk.
   [LMDB]: https://symas.com/lightning-memory-mapped-database/
 
 LMDB is a high-performance [ACID][]-compliant no-maintenance read-optimized
-key-value store. Any Haskell value with a [`Serialise`][Serialise] instance
-can be stored in an LMDB database, or used as a key to index one.
+key-value store. Any Haskell type with a [`Serialise`][Serialise] instance can
+be stored in an LMDB database, or used as a key to index one.
 
   [ACID]: https://en.wikipedia.org/wiki/ACID
   [Serialise]: https://hackage.haskell.org/package/serialise/docs/Codec-Serialise-Tutorial.html#g:3

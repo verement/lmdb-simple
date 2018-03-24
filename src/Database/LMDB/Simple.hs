@@ -284,7 +284,7 @@ nestTransaction (Txn tf) = Txn $ \ptxn ->
           (\e -> let _ = e :: AbortedTransaction in Nothing) Just <$> try io
 
 -- | Explicitly abort the current transaction, nullifying its effects on the
--- LMDB environment. No further actions will be performed within the current
+-- LMDB environment. No further actions will be performed within the
 -- transaction.
 --
 -- In a nested transaction, this causes the child transaction to return
