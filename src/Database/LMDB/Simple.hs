@@ -4,7 +4,7 @@
 {-|
 Module      : Database.LMDB.Simple
 Description : Simple Haskell API for LMDB
-Copyright   : © 2017 Robert Leslie
+Copyright   : © 2017–2018 Robert Leslie
 License     : BSD3
 Maintainer  : rob@mars.org
 Stability   : experimental
