@@ -52,6 +52,7 @@ module Database.LMDB.Simple
   , openEnvironment
   , openReadWriteEnvironment
   , openReadOnlyEnvironment
+  , readOnlyEnvironment
   , clearStaleReaders
 
     -- * Transactions
@@ -92,6 +93,10 @@ import Control.Exception
 import Control.Monad
   ( guard
   , void
+  )
+
+import Data.Coerce
+  ( coerce
   )
 
 import Database.LMDB.Raw
@@ -210,6 +215,15 @@ openReadWriteEnvironment = openEnvironment
 -- mode; see 'openEnvironment'
 openReadOnlyEnvironment :: FilePath -> Limits -> IO (Environment ReadOnly)
 openReadOnlyEnvironment = openEnvironment
+
+-- | For an LMDB environment opened in 'ReadWrite' mode, return the same
+-- environment restricted to 'ReadOnly' mode. This can be used to prevent
+-- modification of the environment for a subset of an application while
+-- retaining the ability to perform modifications in another subset.
+--
+-- @since 0.4.0.0
+readOnlyEnvironment :: Environment ReadWrite -> Environment ReadOnly
+readOnlyEnvironment = coerce
 
 -- | Check for stale entries in the reader lock table, and return the number
 -- of entries cleared.
