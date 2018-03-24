@@ -1,5 +1,4 @@
 
-{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Database.LMDB.Simple.Internal

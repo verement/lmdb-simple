@@ -48,7 +48,6 @@ library
   default-language:    Haskell2010
   default-extensions:  Trustworthy
   other-extensions:    ConstraintKinds
-                       KindSignatures
                        TypeFamilies
 
 test-suite sample
