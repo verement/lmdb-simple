@@ -48,10 +48,21 @@ module Database.LMDB.Simple
   ( -- * Environments
     Environment
   , Limits (..)
+  , MDB_EnvFlag( MDB_FIXEDMAP
+               , MDB_NOSUBDIR
+               , MDB_NOSYNC
+               , MDB_RDONLY
+               , MDB_NOMETASYNC
+               , MDB_WRITEMAP
+               , MDB_MAPASYNC
+               , MDB_NOLOCK
+               , MDB_NORDAHEAD
+               , MDB_NOMEMINIT)
   , defaultLimits
   , openEnvironment
   , openReadWriteEnvironment
   , openReadOnlyEnvironment
+  , openEnvironmentWithFlags
   , readOnlyEnvironment
   , clearStaleReaders
 
@@ -101,7 +112,16 @@ import Data.Coerce
 
 import Database.LMDB.Raw
   ( LMDB_Error (LMDB_Error, e_code)
-  , MDB_EnvFlag (MDB_NOSUBDIR, MDB_RDONLY)
+  , MDB_EnvFlag( MDB_FIXEDMAP
+               , MDB_NOSUBDIR
+               , MDB_NOSYNC
+               , MDB_RDONLY
+               , MDB_NOMETASYNC
+               , MDB_WRITEMAP
+               , MDB_MAPASYNC
+               , MDB_NOLOCK
+               , MDB_NORDAHEAD
+               , MDB_NOMEMINIT)
   , MDB_DbFlag (MDB_CREATE)
   , mdb_env_create
   , mdb_env_open
@@ -183,8 +203,12 @@ defaultLimits = Limits
 -- An environment opened in 'ReadOnly' mode may still modify the reader lock
 -- table (except when the filesystem is read-only, in which case no locks are
 -- used).
-openEnvironment :: Mode mode => FilePath -> Limits -> IO (Environment mode)
-openEnvironment path limits = do
+--
+-- A list of low level flags can be specified. Note that you should not pass
+-- the 'MDB_RDONLY' or 'MDB_NOSUBDIR' flags since they will be added automatically
+-- by this function.
+openEnvironmentWithFlags :: Mode mode => [MDB_EnvFlag] -> FilePath -> Limits -> IO (Environment mode)
+openEnvironmentWithFlags flags path limits = do
   env <- mdb_env_create
 
   mdb_env_set_mapsize    env (mapSize      limits)
@@ -192,11 +216,11 @@ openEnvironment path limits = do
   mdb_env_set_maxreaders env (maxReaders   limits)
 
   let environ = Env env :: Mode mode => Environment mode
-      flags   = [MDB_RDONLY | isReadOnlyEnvironment environ]
+      flags'  = [MDB_RDONLY | isReadOnlyEnvironment environ] ++ flags
 
   r <- tryJust (guard . isNotDirectoryError) $ mdb_env_open env path flags
   case r of
-    Left  _ -> mdb_env_open env path (MDB_NOSUBDIR : flags)
+    Left  _ -> mdb_env_open env path (MDB_NOSUBDIR : flags')
     Right _ -> return ()
 
   return environ
@@ -205,6 +229,20 @@ openEnvironment path limits = do
         isNotDirectoryError LMDB_Error { e_code = Left code }
           | Errno (fromIntegral code) == eNOTDIR = True
         isNotDirectoryError _                    = False
+
+-- | Open an LMDB environment in either 'ReadWrite' or 'ReadOnly' mode. The
+-- 'FilePath' argument may be either a directory or a regular file, but it
+-- must already exist. If a regular file, an additional file with "-lock"
+-- appended to the name is used for the reader lock table.
+--
+-- Note that an environment must have been opened in 'ReadWrite' mode at least
+-- once before it can be opened in 'ReadOnly' mode.
+--
+-- An environment opened in 'ReadOnly' mode may still modify the reader lock
+-- table (except when the filesystem is read-only, in which case no locks are
+-- used).
+openEnvironment :: Mode mode => FilePath -> Limits -> IO (Environment mode)
+openEnvironment = openEnvironmentWithFlags []
 
 -- | Convenience function for opening an LMDB environment in 'ReadWrite'
 -- mode; see 'openEnvironment'
