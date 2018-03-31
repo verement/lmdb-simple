@@ -54,6 +54,8 @@ module Database.LMDB.Simple
   , openReadOnlyEnvironment
   , readOnlyEnvironment
   , clearStaleReaders
+  , delaySync
+  , delayMetaSync
 
     -- * Transactions
   , Transaction
@@ -81,7 +83,10 @@ module Database.LMDB.Simple
 import Control.Concurrent
   ( runInBoundThread
   )
-
+import Control.Concurrent.MVar
+  ( takeMVar
+  , putMVar
+  )
 import Control.Exception
   ( Exception
   , throwIO
@@ -95,19 +100,26 @@ import Control.Monad
   , void
   )
 
+import Control.Monad.IO.Class
+  ( MonadIO (liftIO)
+  )
+
 import Data.Coerce
   ( coerce
   )
 
 import Database.LMDB.Raw
   ( LMDB_Error (LMDB_Error, e_code)
-  , MDB_EnvFlag (MDB_NOSUBDIR, MDB_RDONLY)
+  , MDB_EnvFlag (MDB_NOSUBDIR, MDB_RDONLY, MDB_NOSYNC, MDB_NOMETASYNC)
   , MDB_DbFlag (MDB_CREATE)
   , mdb_env_create
   , mdb_env_open
+  , mdb_env_set_flags
   , mdb_env_set_mapsize
   , mdb_env_set_maxdbs
   , mdb_env_set_maxreaders
+  , mdb_env_sync_flush
+  , mdb_env_unset_flags
   , mdb_dbi_open'
   , mdb_txn_begin
   , mdb_txn_commit
@@ -129,6 +141,7 @@ import Database.LMDB.Simple.Internal
   , isReadOnlyEnvironment
   , isReadOnlyTransaction
   , isReadWriteTransaction
+  , mkNewEnvironment
   )
 import qualified Database.LMDB.Simple.Internal as Internal
 
@@ -191,8 +204,8 @@ openEnvironment path limits = do
   mdb_env_set_maxdbs     env (maxDatabases limits)
   mdb_env_set_maxreaders env (maxReaders   limits)
 
-  let environ = Env env :: Mode mode => Environment mode
-      flags   = [MDB_RDONLY | isReadOnlyEnvironment environ]
+  environ <- mkNewEnvironment env :: Mode mode => IO (Environment mode)
+  let flags   = [MDB_RDONLY | isReadOnlyEnvironment environ]
 
   r <- tryJust (guard . isNotDirectoryError) $ mdb_env_open env path flags
   case r of
@@ -228,7 +241,7 @@ readOnlyEnvironment = coerce
 -- | Check for stale entries in the reader lock table, and return the number
 -- of entries cleared.
 clearStaleReaders :: Environment mode -> IO Int
-clearStaleReaders (Env env) = mdb_reader_check env
+clearStaleReaders (Env env _ _) = mdb_reader_check env
 
 -- | Perform a top-level transaction in either 'ReadWrite' or 'ReadOnly'
 -- mode. A transaction may only be 'ReadWrite' if the environment is also
@@ -250,7 +263,7 @@ clearStaleReaders (Env env) = mdb_reader_check env
 -- serialized.
 transaction :: (Mode tmode, SubMode emode tmode)
             => Environment emode -> Transaction tmode a -> IO a
-transaction (Env env) tx@(Txn tf)
+transaction (Env env _ _) tx@(Txn tf)
   | isReadOnlyTransaction tx = run True
   | otherwise                = runInBoundThread (run False)
   where run readOnly =
@@ -343,3 +356,47 @@ put db key = maybe (void $ Internal.delete db key) (Internal.put db key)
 -- | Delete all key/value pairs from a database, leaving the database empty.
 clear :: Database k v -> Transaction ReadWrite ()
 clear (Db _ dbi) = Txn $ \txn -> mdb_clear' txn dbi
+
+-- | Delay flushing system buffer to disk when commiting transactions that are
+-- using the given read-write 'Environment' until after`m` completes.
+--
+-- This optimization means a system crash can corrupt the database or lose the
+-- last transactions if buffers are not yet flushed to disk. The risk is
+-- governed by how often the system flushes dirty buffers to disk.
+delaySync :: (MonadIO m) => Environment ReadWrite -> m a -> m a
+delaySync (Env e c _) m = do
+  c' <- liftIO $ takeMVar c
+  liftIO $ mdb_env_set_flags e [MDB_NOSYNC]
+  liftIO $ putMVar c (c' + 1)
+  
+  result <- m
+  liftIO $ mdb_env_sync_flush e
+
+  c'' <- liftIO $ takeMVar c
+  if c'' <= 1
+    then do liftIO $ mdb_env_unset_flags e [MDB_NOSYNC]
+            liftIO $ putMVar c 0
+    else liftIO $ putMVar c (c'' - 1)
+  return result
+
+-- | Flush system buffers to disk only once per transaction, omit the metadata flush, for the
+-- given read-write 'Environment'.
+-- Defer that until the system flushes files to disk, or next non readonly transaction commit
+-- or after the mondadic action 'm' completes. This optimization maintains database integrity,
+-- but a system crash may undo the last committed transaction. I.e. it preserves the ACI
+-- (atomicity, consistency, isolation) but not D (durability) database property.
+delayMetaSync :: (MonadIO m) => Environment ReadWrite -> m a -> m a
+delayMetaSync (Env e _ c) m = do
+  c' <- liftIO $ takeMVar c
+  liftIO $ mdb_env_set_flags e [MDB_NOMETASYNC]
+  liftIO $ putMVar c (c' + 1)
+  
+  result <- m
+  liftIO $ mdb_env_sync_flush e
+
+  c'' <- liftIO $ takeMVar c
+  if c'' <= 1
+    then do liftIO $ mdb_env_unset_flags e [MDB_NOMETASYNC]
+            liftIO $ putMVar c 0
+    else liftIO $ putMVar c (c'' - 1)
+  return result
