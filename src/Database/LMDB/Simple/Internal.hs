@@ -16,6 +16,7 @@ module Database.LMDB.Simple.Internal
   , serialiseBS
   , marshalOut
   , marshalIn
+  , mkNewEnvironment
   , peekVal
   , forEachForward
   , forEachReverse
@@ -38,6 +39,10 @@ import Codec.Serialise
   , deserialise
   )
 
+import Control.Concurrent.MVar
+  ( MVar
+  , newMVar
+  )
 import Control.Exception
   ( assert
   , bracket
@@ -116,13 +121,22 @@ type family SubMode a b :: Constraint where
   SubMode a ReadOnly  = ()
 
 -- | An LMDB environment is a directory or file on disk that contains one or
--- more databases, and has an associated (reader) lock table.
-newtype Environment mode = Env MDB_env
+-- more databases, and has an associated (reader) lock table. It also contains
+-- counting 'MVar's for counting the calls for 'delaySync' and 'delayMetaSync'. 
+data Environment mode = Env {
+  env_Env :: MDB_env,
+  env_NoSyncCount     :: MVar Int,
+  env_MetaNoSyncCount :: MVar Int
+  }
 
 isReadOnlyEnvironment :: Mode mode => Environment mode -> Bool
 isReadOnlyEnvironment = isReadOnlyMode . mode
   where mode :: Environment mode -> mode
         mode = undefined
+
+-- | Creates a new 'Environment' out of a 'MDB_env'
+mkNewEnvironment :: MDB_env -> IO (Environment mode)
+mkNewEnvironment e = Env e <$> (newMVar 0) <*> (newMVar 0)
 
 -- | An LMDB transaction is an atomic unit for reading and/or changing one or
 -- more LMDB databases within an environment, during which the transaction has

@@ -63,18 +63,18 @@ readDBRef ref@(Ref env dbi key) = transaction env (tx env ref)
 
   where tx :: Serialise a
            => Environment mode -> DBRef mode a -> Transaction ReadOnly (Maybe a)
-        tx (Env env) _ = getBS (Db env dbi) key
+        tx (Env env _ _) _ = getBS (Db env dbi) key
 
 -- | Write a new value into a 'DBRef'.
 writeDBRef :: Serialise a => DBRef ReadWrite a -> Maybe a -> IO ()
 writeDBRef (Ref env dbi key) = transaction env . maybe (delKey env) (putKey env)
 
   where delKey :: Environment ReadWrite -> Transaction ReadWrite ()
-        delKey (Env env) = void $ deleteBS (Db env dbi) key
+        delKey (Env env _ _) = void $ deleteBS (Db env dbi) key
 
         putKey :: Serialise a
                => Environment ReadWrite -> a -> Transaction ReadWrite ()
-        putKey (Env env) = putBS (Db env dbi) key
+        putKey (Env env _ _) = putBS (Db env dbi) key
 
 -- | Atomically mutate the contents of a 'DBRef'.
 modifyDBRef_ :: Serialise a => DBRef ReadWrite a -> (Maybe a -> Maybe a) -> IO ()
@@ -88,7 +88,7 @@ modifyDBRef (Ref env dbi key) = transaction env . tx env
   where tx :: Serialise a
            => Environment mode -> (Maybe a -> (Maybe a, b))
            -> Transaction ReadWrite b
-        tx (Env env) f = let db = Db env dbi in
+        tx (Env env _ _) f = let db = Db env dbi in
           getBS db key >>= \x -> let (x', r) = f x in
           maybe (void $ deleteBS db key) (putBS db key) x' >>
           return r
