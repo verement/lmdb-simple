@@ -56,6 +56,8 @@ module Database.LMDB.Simple
   , clearStaleReaders
   , delaySync
   , delayMetaSync
+  , isSyncDelayed
+  , isMetaSyncDelayed
 
     -- * Transactions
   , Transaction
@@ -114,6 +116,7 @@ import Database.LMDB.Raw
   , MDB_DbFlag (MDB_CREATE)
   , mdb_env_create
   , mdb_env_open
+  , mdb_env_get_flags
   , mdb_env_set_flags
   , mdb_env_set_mapsize
   , mdb_env_set_maxdbs
@@ -400,3 +403,15 @@ delayMetaSync (Env e _ c) m = do
             liftIO $ putMVar c 0
     else liftIO $ putMVar c (c'' - 1)
   return result
+
+-- | Check if current 'Environment' delays flushing the system buffers to disk or not.
+isSyncDelayed :: Environment ReadWrite -> IO Bool
+isSyncDelayed e = isEnvFlagSet e MDB_NOSYNC
+
+-- | Check if current 'Environment' delays flushing the meta data to disk or not.
+isMetaSyncDelayed :: Environment ReadWrite -> IO Bool
+isMetaSyncDelayed e = isEnvFlagSet e MDB_NOMETASYNC
+
+-- | Checks if a flag is set on the current environment
+isEnvFlagSet :: Environment mode -> MDB_EnvFlag -> IO Bool
+isEnvFlagSet (Env e _ _) f = elem f <$> mdb_env_get_flags e

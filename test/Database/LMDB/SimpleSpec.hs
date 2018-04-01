@@ -62,3 +62,27 @@ spec = beforeAll setup $ do
       ( do nestTransaction (put db 3 $ Just "three")
            get db 3
       ) `shouldReturn` Just "three"
+
+  describe "delaySync" $ do
+    it "sets the MDB_NOSYNC flag to on" $ \(env, _) ->
+      delaySync env $ (isSyncDelayed env) `shouldReturn` True
+    it "clears MDB_NOSYNC flag after the action completes" $ \(env, _) ->
+      (delaySync env (return ()) >> isSyncDelayed env) `shouldReturn` False
+    it "doesn't clear MDB_NOSYNC in a nested delaySync call" $ \(env, _) ->
+      (delaySync env $ delaySync env (return ()) >> isSyncDelayed env)
+      `shouldReturn` True
+    it "clears the MDB_NOSYNC flag after an action with a nested syncDelay call ends" $ \(env, _) ->
+      (delaySync env (delaySync env $ return ()) >> isSyncDelayed env)
+      `shouldReturn` False
+
+  describe "delayMetaSync" $ do
+    it "sets the MDB_NOMETASYNC flag to on" $ \(env, _) ->
+      delayMetaSync env $ (isMetaSyncDelayed env) `shouldReturn` True
+    it "clears MDB_NOMETASYNC flag after the action completes" $ \(env, _) ->
+      (delayMetaSync env (return ()) >> isMetaSyncDelayed env) `shouldReturn` False
+    it "doesn't clear MDB_NOMETASYNC in a nested delaySync call" $ \(env, _) ->
+      (delayMetaSync env $ delayMetaSync env (return ()) >> isMetaSyncDelayed env)
+      `shouldReturn` True
+    it "clears the MDB_NONETASYNC flag after an action with a nested syncDelay call ends" $ \(env, _) ->
+      (delayMetaSync env (delayMetaSync env $ return ()) >> isMetaSyncDelayed env)
+      `shouldReturn` False
