@@ -1,5 +1,6 @@
 
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE RankNTypes #-}
 
 {-|
 Module      : Database.LMDB.Simple
@@ -63,6 +64,7 @@ module Database.LMDB.Simple
   , nestTransaction
   , abort
   , AbortedTransaction
+  , transactionWithRunInIO
 
     -- * Databases
   , Database
@@ -306,6 +308,12 @@ nestTransaction (Txn tf) = Txn $ \ptxn ->
 -- 'AbortedTransaction' exception, which can be caught.
 abort :: Transaction mode a
 abort = Txn $ \_ -> throwIO AbortedTransaction
+
+-- | This function can be used to write a @MonadUnliftIO@ for 'Transaction'
+--
+-- See @unliftio-core@ for details
+transactionWithRunInIO :: ((forall a. Transaction mode a -> IO a) -> IO b) -> Transaction mode b
+transactionWithRunInIO inner = Txn $ \txn -> inner (\(Txn tf) -> tf txn)
 
 -- | Retrieve a database handle from the LMDB environment. The database may be
 -- specified by name, or 'Nothing' can be used to specify the main (unnamed)
