@@ -1,6 +1,7 @@
 
 module Harness
   ( setup
+  , tearDown
   ) where
 
 import Database.LMDB.Simple
@@ -17,3 +18,6 @@ setup = do
     return db
 
   return (env, db)
+
+tearDown :: (Environment ReadWrite, Database Int String) -> IO ()
+tearDown (env, _db) = closeEnvironment env
