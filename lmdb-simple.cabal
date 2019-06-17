@@ -40,7 +40,8 @@ library
                        Database.LMDB.Simple.View
   other-modules:       Database.LMDB.Simple.Internal
 
-  build-depends:       base >= 4.7 && < 5
+  build-depends:       async
+                     , base >= 4.7 && < 5
                      , bytestring >= 0.10 && < 0.11
                      , lmdb >= 0.2 && < 0.3
                      , serialise >= 0.2 && < 0.3
