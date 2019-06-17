@@ -10,7 +10,7 @@ import Harness
 import Test.Hspec
 
 spec :: Spec
-spec = beforeAll setup $ do
+spec = beforeAll setup $ afterAll tearDown $ do
 
   describe "basic operations" $ do
     it "inserts and counts entries" $ \(env, db) ->
